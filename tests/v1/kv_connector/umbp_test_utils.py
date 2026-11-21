@@ -366,7 +366,7 @@ def _hybrid_kv_cache_config() -> KVCacheConfig:
     )
     mamba = MambaManager.layer_config(
         MambaSpec(block_size=16, shapes=((4,),), dtypes=(torch.float32,)),
-        enable_prefix_caching=True,
+        mamba_cache_mode="align",
     )
     return KVCacheConfig(
         num_blocks=8,

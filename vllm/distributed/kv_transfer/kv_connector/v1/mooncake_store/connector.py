@@ -179,9 +179,12 @@ class MooncakeStoreConnector(KVConnectorBase_V1, SupportsHMA):
             params = config.params
             if (
                 isinstance(params, MambaManager.Params)
-                and not params.enable_prefix_caching
+                and params.mamba_cache_mode != "align"
             ):
-                unsupported.append(f"group {group_id}: Mamba without prefix caching")
+                unsupported.append(
+                    f"group {group_id}: mamba_cache_mode="
+                    f"{params.mamba_cache_mode!r} != 'align'"
+                )
         pcp = vllm_config.parallel_config.prefill_context_parallel_size
         if len(store_group_ids) > 1 and pcp > 1:
             unsupported.append(f"PCP > 1 (pcp={pcp}) with hybrid attention")

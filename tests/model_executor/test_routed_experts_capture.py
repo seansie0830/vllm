@@ -873,7 +873,7 @@ def test_model_runner_accepts_routed_experts(monkeypatch):
         compilation_config=SimpleNamespace(mode=CompilationMode.NONE),
         cache_config=SimpleNamespace(
             kv_sharing_fast_prefill=False,
-            enable_prefix_caching=False,
+            mamba_cache_mode="none",
         ),
         ec_transfer_config=None,
     )

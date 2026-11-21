@@ -304,7 +304,9 @@ def test_update_resets_active_on_error():
     assert worker._weight_update_active is False
 
 
-def test_failed_finish_ends_session():
+@pytest.mark.parametrize("mode", ["direct", "layerwise"])
+def test_failed_finish_ends_session_only_in_direct_mode(mode, monkeypatch):
+    monkeypatch.setenv("VLLM_RELOAD_MODE", mode)
     engine = _RecordingEngine(raise_on_finish=True)
     worker = _make_worker(engine)
     Worker.start_weight_update(worker)
@@ -312,9 +314,11 @@ def test_failed_finish_ends_session():
     with pytest.raises(ValueError, match="boom"):
         Worker.finish_weight_update(worker)
 
-    # a failed finish cannot be retried, so the next start must work
-    assert worker._weight_update_active is False
-    assert engine.reset_count == 1
+    # a failed direct finish cannot be retried, so the next start must work;
+    # a failed layerwise finish stays active and can be retried
+    direct = mode == "direct"
+    assert worker._weight_update_active is not direct
+    assert engine.reset_count == int(direct)
 
 
 def test_missing_engine_raises():

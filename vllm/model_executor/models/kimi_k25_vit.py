@@ -149,9 +149,9 @@ class Learnable2DInterpPosEmbDivided_fixed(nn.Module):
             if t == 1:
                 pos_emb_3d = pos_emb_2d
             else:
-                # time_weight stays float32 when the tower is not cast (e.g. quantized).
-                time_weight = self.time_weight[0:t].to(pos_emb_2d.dtype)
-                pos_emb_3d = pos_emb_2d.unsqueeze(0).repeat(t, 1, 1) + time_weight
+                pos_emb_3d = (
+                    pos_emb_2d.unsqueeze(0).repeat(t, 1, 1) + self.time_weight[0:t]
+                )
 
             pos_embs.append(pos_emb_3d.reshape(-1, pos_emb_3d.shape[-1]))
 

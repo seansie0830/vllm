@@ -104,7 +104,8 @@ logger = init_logger(__name__)
 
 def _can_fuse_decode_aux(metadata, runtime_mode: CUDAGraphMode) -> bool:
     # BCG prefill reuses captured projections/norms. Keep decode-only state
-    # mutations out of those PIECEWISE segments.
+    # mutations out of those PIECEWISE segments. MRV2 captures FULL graphs
+    # with runtime_mode=NONE, which is also the eager/warmup mode.
     return (
         runtime_mode != CUDAGraphMode.PIECEWISE
         and metadata is not None

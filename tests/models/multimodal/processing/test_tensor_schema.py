@@ -139,7 +139,9 @@ def initialize_dummy_model(
 ):
     temp_file = tempfile.mkstemp()[1]
     current_device = torch.get_default_device()
-    vllm_config = VllmConfig(model_config=model_config, cache_config=CacheConfig())
+    vllm_config = VllmConfig(
+        model_config=model_config, cache_config=CacheConfig(block_size=16)
+    )
     with set_current_vllm_config(vllm_config=vllm_config):
         init_distributed_environment(
             world_size=1,

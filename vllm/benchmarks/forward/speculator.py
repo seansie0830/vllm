@@ -13,9 +13,8 @@ class DraftBench:
     def __init__(self, runner):
         self.runner = runner
         self.speculator = runner.speculator
-        speculative_config = runner.vllm_config.speculative_config
-        self.method = speculative_config.method
-        if not speculative_config.uses_target_hidden_states:
+        self.method = runner.vllm_config.speculative_config.method
+        if self.method not in ("mtp", "eagle", "eagle3", "dspark", "dflash"):
             raise ValueError(
                 f"Drafter timing does not support {self.method!r}; "
                 "use --exclude-drafter for target-only timing."

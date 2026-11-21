@@ -23,11 +23,12 @@
 import math
 from collections.abc import Iterable
 from itertools import islice
+from typing import TypeAlias
 
 import torch
 from torch import nn
 from torch.nn import LayerNorm
-from transformers import FalconConfig
+from transformers import FalconConfig as HF_FalconConfig
 
 from vllm.compilation.decorators import support_torch_compile
 from vllm.config import CacheConfig, VllmConfig
@@ -53,6 +54,7 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
 )
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 from vllm.sequence import IntermediateTensors
+from vllm.transformers_utils.configs.falcon import RWConfig
 
 from .interfaces import SupportsPP
 from .utils import (
@@ -62,6 +64,8 @@ from .utils import (
     make_layers,
     maybe_prefix,
 )
+
+FalconConfig: TypeAlias = HF_FalconConfig | RWConfig
 
 
 def _get_alibi_slopes(total_num_heads: int) -> torch.Tensor:
@@ -160,7 +164,7 @@ class FalconAttention(nn.Module):
         )
 
         if self.use_rotary:
-            max_position_embeddings = config.max_position_embeddings
+            max_position_embeddings = getattr(config, "max_position_embeddings", 8192)
             self.rotary_emb = get_rope(
                 self.head_dim,
                 max_position=max_position_embeddings,
@@ -276,6 +280,9 @@ class FalconDecoderLayer(nn.Module):
         )
         self.mlp = FalconMLP(config, quant_config, prefix=f"{prefix}.mlp")
         self.config = config
+
+        if not hasattr(config, "num_ln_in_parallel_attn"):
+            config.num_ln_in_parallel_attn = None
 
         if config.num_ln_in_parallel_attn is None and config.new_decoder_architecture:
             config.num_ln_in_parallel_attn = 2

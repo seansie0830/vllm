@@ -43,7 +43,7 @@ def test_replayssm_does_not_reserve_speculative_state_blocks(
         cache_config=SimpleNamespace(
             mamba_block_size=1,
             mamba_page_size_padded=None,
-            enable_prefix_caching=False,
+            mamba_cache_mode="none",
             use_replayssm=use_replayssm,
         ),
         num_speculative_tokens=3,

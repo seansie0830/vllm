@@ -400,11 +400,7 @@ class DeepseekV4DecoderLayer(nn.Module):
         if engram_layout is not None:
             layer_id = extract_layer_index(prefix)
             if layer_id in engram_layout.layer_ids:
-                engram_cls = Engram
-                engram_config = vllm_config.engram_config
-                if engram_config and engram_config.peer_group_store is not None:
-                    from .ops.engram_pool import PoolEngram as engram_cls
-                self.engram = engram_cls(
+                self.engram = Engram(
                     config,
                     vllm_config.quant_config,
                     engram_layout,
@@ -1038,10 +1034,7 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
                 )
                 if first_reader is not None:
                     first_reader.always_gathers_compressed_kv = True
-        batch_cls = EngramBatch
-        if engram_config and engram_config.peer_group_store is not None:
-            from .ops.engram_pool import PoolEngramBatch as batch_cls
-        self.engram_batch = batch_cls.create(
+        self.engram_batch = EngramBatch.create(
             [
                 layer.engram
                 for layer in islice(self.layers, self.start_layer, self.end_layer)

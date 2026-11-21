@@ -60,7 +60,7 @@ class K2HorizonReasoningParser(DeepSeekR1ReasoningParser):
         if tool_start != -1:
             return output[:tool_start], output[tool_start:]
 
-        return output, None
+        return "", output or None
 
     def extract_reasoning(
         self,

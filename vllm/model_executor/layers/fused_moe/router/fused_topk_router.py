@@ -189,6 +189,11 @@ def fused_topk(
             topk_indices=topk_ids,
             gating_output=gating_output,
         )
+        topk_weights, topk_ids = topk_func(
+            topk_weights, topk_ids, token_expert_indices, gating_output, renormalize
+        )
+
+        return topk_weights, topk_ids, token_expert_indices
     elif scoring_func == "sigmoid":
         topk_func = dispatch_topk_sigmoid_func(
             use_rocm_aiter=rocm_aiter_ops.is_fused_moe_enabled(),
@@ -196,15 +201,13 @@ def fused_topk(
             topk_indices=topk_ids,
             gating_output=gating_output,
         )
-    else:
-        raise ValueError(f"Unsupported scoring function: {scoring_func}")
-
-    # Idle ranks still participate in dispatch, but have no local routing work.
-    if M > 0:
         topk_weights, topk_ids = topk_func(
             topk_weights, topk_ids, token_expert_indices, gating_output, renormalize
         )
-    return topk_weights, topk_ids, token_expert_indices
+
+        return topk_weights, topk_ids, token_expert_indices
+    else:
+        raise ValueError(f"Unsupported scoring function: {scoring_func}")
 
 
 class FusedTopKRouter(BaseRouter):

@@ -60,12 +60,11 @@ def get_engine_process_shutdown_timeout(
     force-killing during teardown can leave VRAM resident.
 
     `process_timeout` may be a remaining budget computed by an outer process
-    manager. A zero remaining budget for a positive request timeout must not
-    receive a fresh grace period because EngineCore relies on that deadline to
-    enforce request draining. `None` (e.g. `AsyncLLM.shutdown()`) means no
-    budget was given, so it receives the same cleanup window as zero.
+    manager. Keep it unchanged unless both values are zero: a zero remaining
+    budget for a positive request timeout must not receive a fresh grace period
+    because EngineCore relies on that deadline to enforce request draining.
     """
-    if request_timeout == 0 and process_timeout in (0, None):
+    if request_timeout == 0 and process_timeout == 0:
         if envs.is_set("VLLM_WORKER_SHUTDOWN_TIMEOUT_SECONDS"):
             return float(envs.VLLM_WORKER_SHUTDOWN_TIMEOUT_SECONDS)
         if current_platform.is_rocm():

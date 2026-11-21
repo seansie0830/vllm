@@ -146,7 +146,6 @@ class LoadRecoveryExampleConnector(ExampleConnector):
                         block_size=self._block_size,
                         is_store=False,
                         mm_hashes=[],
-                        num_hash_lookahead_tokens=self._num_hash_lookahead_tokens,
                     )
                 # Clear state
                 self._requests_need_load.clear()

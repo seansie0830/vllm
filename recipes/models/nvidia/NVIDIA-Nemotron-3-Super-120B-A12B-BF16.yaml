@@ -97,6 +97,8 @@ variants:
           - "16384"
           - "--kv-cache-dtype"
           - "fp8"
+          - "--mamba-cache-mode"
+          - "align"
           - "--mamba-ssm-cache-dtype"
           - "float32"
           - "--enable-prefix-caching"
@@ -206,6 +208,7 @@ guide: |
       --attention-backend flashinfer \
       --max-num-batched-tokens 16384 \
       --kv-cache-dtype fp8 \
+      --mamba-cache-mode align \
       --mamba-ssm-cache-dtype float32 \
       --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
       --enable-prefix-caching \
@@ -231,6 +234,7 @@ guide: |
       --max-num-seqs 8 \
       --max-num-batched-tokens 16384 \
       --kv-cache-dtype fp8 \
+      --mamba-cache-mode align \
       --mamba-ssm-cache-dtype float32 \
       --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
       --enable-prefix-caching \

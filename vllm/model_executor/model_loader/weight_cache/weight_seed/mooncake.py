@@ -3,7 +3,6 @@
 """The Mooncake weight mover: pull storages through the TransferEngine."""
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
 import torch
 
@@ -14,11 +13,6 @@ from vllm.model_executor.model_loader.weight_cache.weight_seed.core import (
 )
 from vllm.utils.import_utils import PlaceholderModule
 from vllm.utils.network_utils import get_ip
-
-if TYPE_CHECKING:
-    from vllm.model_executor.model_loader.weight_cache.ipc_backends.base import (
-        StorageRecord,
-    )
 
 try:
     from mooncake.engine import TransferEngine
@@ -43,7 +37,7 @@ class MooncakeMover(WeightMover):
         self.protocol = protocol
         self._engine = None
         self._source_session: str | None = None
-        # Mooncake refuses to register memory twice, so each allocation is
+        # Mooncake refuses to register memory twice, so each storage is
         # registered once and serves every later mirror.
         self._registered: dict[int, int] = {}
 
@@ -58,21 +52,12 @@ class MooncakeMover(WeightMover):
             self._engine, self._source_session = self._initialize_engine()
         return self._engine
 
-    def prepare_seed(self, storages: list["StorageRecord"]) -> dict:
+    def prepare_seed(self, storages: list[torch.UntypedStorage]) -> dict:
         engine = self._get_engine()
-        regions = [
-            [
-                record.storage.data_ptr() + record.byte_offset,
-                record.storage.nbytes() - record.byte_offset,
-            ]
-            for record in storages
-        ]
-        allocations = {
-            record.storage.data_ptr(): record.storage.nbytes() for record in storages
-        }
+        regions = [[storage.data_ptr(), storage.nbytes()] for storage in storages]
         new = [
             (pointer, nbytes)
-            for pointer, nbytes in allocations.items()
+            for pointer, nbytes in regions
             if nbytes and pointer not in self._registered
         ]
         if new:

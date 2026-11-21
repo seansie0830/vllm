@@ -26,7 +26,6 @@ logger = init_logger(__name__)
 # Allowed: native still-image / raster readers that decode in-process.
 # Denied:
 #   EPS — may invoke Ghostscript on untrusted PostScript
-#   ICNS — the decoder does not expose reliable dimensions before loading
 #   WMF — Windows GDI / stub-handler path
 #   BUFR / GRIB / HDF5 — stub drivers requiring external handlers
 #   MPEG — identify-only; not a decodable still image
@@ -43,6 +42,7 @@ ALLOWED_IMAGE_FORMATS: tuple[str, ...] = (
     "FTEX",
     "GBR",
     "GIF",
+    "ICNS",
     "ICO",
     "IM",
     "IMT",

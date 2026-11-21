@@ -367,9 +367,6 @@ class QSAIndexer(nn.Module):
             self.token_topk,
             self.compress_ratio,
             out,
-            single_row_decode=(
-                metadata.num_prefills == 0 and metadata.decode_query_len == 1
-            ),
         )
 
     def forward(

@@ -16,6 +16,7 @@ from vllm.model_executor.models.interfaces import (
     MixtureOfExperts,
     get_mixture_of_experts_model,
 )
+from vllm.v1.worker.gpu.spec_decode.dspark.config import dspark_draft_supports_eplb
 
 if TYPE_CHECKING:
     from vllm.v1.worker.gpu.model_runner import GPUModelRunner
@@ -39,9 +40,9 @@ def draft_model_supports_eplb(
         return False
     if not getattr(speculative_config, "draft_enable_eplb", True):
         return False
-    return type(speculative_config.speculator_config).supports_draft_eplb(
-        speculative_config.draft_model_config
-    )
+    if getattr(speculative_config, "method", None) == "dspark":
+        return dspark_draft_supports_eplb(speculative_config.draft_model_config)
+    return True
 
 
 def step_eplb_after(*, is_dummy: bool = False) -> Callable:

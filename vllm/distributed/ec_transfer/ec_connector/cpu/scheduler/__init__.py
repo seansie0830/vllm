@@ -350,7 +350,13 @@ class ECCPUScheduler:
         """
         mm_hash = feature.identifier
         self._deferred_since.pop((request.request_id, mm_hash), None)
-        if self._metadata_resolver.has_encoder_input(feature):
+        data = feature.data
+        metadata = (
+            self._metadata_resolver.fields_for(feature.modality) if data else set()
+        )
+        if data and any(
+            value.data is not None for key, value in data.items() if key not in metadata
+        ):
             # Passthrough embeddings bypass the processor cache. SHM address
             # items therefore refer to media that the worker can encode.
             request.ec_transfer_params = dict(request.ec_transfer_params or {})

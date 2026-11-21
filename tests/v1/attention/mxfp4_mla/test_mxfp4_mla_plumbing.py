@@ -89,7 +89,7 @@ def test_hybrid_block_size_matches_the_layer_page(monkeypatch):
         block_size=64,
         mamba_block_size=None,
         user_specified_mamba_block_size=False,
-        enable_prefix_caching=False,
+        mamba_cache_mode="none",
         mamba_page_size_padded=None,
         kv_cache_dtype_skip_layers=None,
     )

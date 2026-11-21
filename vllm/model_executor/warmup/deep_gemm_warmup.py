@@ -6,7 +6,7 @@ be used during model execution beforehand.
 """
 
 import sys
-from typing import TYPE_CHECKING, TypeAlias, TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 import torch
 from tqdm import tqdm
@@ -44,14 +44,9 @@ from vllm.v1.worker.workspace import current_workspace_manager
 
 if TYPE_CHECKING:
     from vllm.models.deepseek_v4.nvidia.model import DeepseekV4MoE
-    from vllm.models.glm5next.common.model import Glm5NextMoE
     from vllm.models.kimi_k3.nvidia.model import KimiMoE
     from vllm.models.minimax_m3.nvidia.model import MiniMaxM3MoE
     from vllm.models.qwen4_exp.nvidia.mega_moe import Qwen4ExpMegaMoeBlock
-
-    MegaMoEModule: TypeAlias = (
-        DeepseekV4MoE | KimiMoE | MiniMaxM3MoE | Qwen4ExpMegaMoeBlock | Glm5NextMoE
-    )
 
 
 def _generate_optimal_warmup_m_values(
@@ -177,7 +172,7 @@ def _mega_moe_uses_mega_gate(module: torch.nn.Module) -> "TypeGuard[DeepseekV4Mo
 
 def _mega_moe_may_use_deep_gemm(
     module: torch.nn.Module,
-) -> "TypeGuard[MegaMoEModule]":
+) -> "TypeGuard[DeepseekV4MoE | KimiMoE | MiniMaxM3MoE | Qwen4ExpMegaMoeBlock]":
     if _mega_moe_uses_mega_gate(module):
         return module.use_native_mega_moe
     qwen4_exp = sys.modules.get("vllm.models.qwen4_exp.nvidia.mega_moe")
@@ -185,11 +180,9 @@ def _mega_moe_may_use_deep_gemm(
         return True
     kimi = sys.modules.get("vllm.models.kimi_k3.nvidia.model")
     minimax = sys.modules.get("vllm.models.minimax_m3.nvidia.model")
-    glm = sys.modules.get("vllm.models.glm5next.common.model")
     return (
         (kimi is not None and isinstance(module, kimi.KimiMoE))
         or (minimax is not None and isinstance(module, minimax.MiniMaxM3MoE))
-        or (glm is not None and isinstance(module, glm.Glm5NextMoE))
     ) and module.use_mega_moe
 
 
@@ -505,7 +498,9 @@ def _deepgemm_grouped_fp8_gemm_nt_contiguous_warmup(
 FP8_FP4_MEGA_MOE_WARMUP_CACHE: set[tuple] = set()
 
 
-def _get_fp8_fp4_mega_moe_warmup_key(module: "MegaMoEModule") -> tuple:
+def _get_fp8_fp4_mega_moe_warmup_key(
+    module: "DeepseekV4MoE | KimiMoE | MiniMaxM3MoE | Qwen4ExpMegaMoeBlock",
+) -> tuple:
     gate = module.gate
     return (
         gate.output_size,
@@ -520,7 +515,8 @@ def _get_fp8_fp4_mega_moe_warmup_key(module: "MegaMoEModule") -> tuple:
 
 
 def _get_fp8_fp4_mega_moe_m_values(
-    module: "MegaMoEModule", max_tokens: int
+    module: "DeepseekV4MoE | KimiMoE | MiniMaxM3MoE | Qwen4ExpMegaMoeBlock",
+    max_tokens: int,
 ) -> list[int]:
     """Get the M values that reach every MegaMoE kernel and, where used,
     bf16_mega_gate config."""
@@ -551,7 +547,7 @@ def _get_fp8_fp4_mega_moe_m_values(
 
 
 def _deepgemm_fp8_fp4_mega_moe_warmup(
-    module: "MegaMoEModule",
+    module: "DeepseekV4MoE | KimiMoE | MiniMaxM3MoE | Qwen4ExpMegaMoeBlock",
     max_tokens: int,
     pbar: tqdm | None = None,
 ):

@@ -32,7 +32,7 @@ NUM_SPEC = 3
 
 def _builder(
     use_spec_decode: bool,
-    enable_prefix_caching: bool = False,
+    mamba_cache_mode: str = "none",
     shapes: tuple[tuple[int, ...], ...] = ((16, 64),),
     dtypes: tuple[torch.dtype, ...] = (torch.float16,),
 ) -> GDNAttentionMetadataBuilder:
@@ -46,10 +46,9 @@ def _builder(
         if use_spec_decode
         else None
     )
-    # Without prefix caching the block table is kept as-is; with it, the gather
-    # needs columns for the speculative blocks, which `_decode_metadata` appends
-    # on request.
-    vllm_config.cache_config.enable_prefix_caching = enable_prefix_caching
+    # "none" keeps the block table as-is; the align gather needs columns for
+    # the speculative blocks, which `_decode_metadata` appends on request.
+    vllm_config.cache_config.mamba_cache_mode = mamba_cache_mode
     mamba_spec = MambaSpec(
         block_size=BLOCK_SIZE,
         shapes=shapes,
@@ -89,8 +88,8 @@ def _decode_metadata(builder, num_accepted: list[int], seq_len: int = 64):
     common = create_common_attn_metadata(
         batch, BLOCK_SIZE, DEVICE, arange_block_indices=True
     )
-    if builder.vllm_config.cache_config.enable_prefix_caching:
-        # The gather takes the last 1 + num_speculative_blocks columns starting at
+    if builder.vllm_config.cache_config.mamba_cache_mode == "align":
+        # Align gathers the last 1 + num_speculative_blocks columns starting at
         # the request's current block, so the table has to reach past the end of
         # the sequence -- at runtime it is sized by max_model_len, while the
         # test helper sizes it by seq_len.
@@ -150,24 +149,25 @@ def test_plain_decode_without_spec_decode_skips_the_speculative_path():
 
 
 @pytest.mark.parametrize(
-    "enable_prefix_caching, shapes, dtypes",
+    "mamba_cache_mode, shapes, dtypes",
     [
-        (False, ((16, 64),), (torch.float16,)),
+        ("none", ((16, 64),), (torch.float16,)),
         # Kimi-Linear's KDA layers subclass GatedDeltaNetAttention and consume
-        # this same metadata, and Kimi enables prefix caching by default -- so
-        # the guarantee has to hold for that state shape and prefix caching too.
+        # this same metadata, and prefix caching (which Kimi enables by
+        # default) puts the cache in align mode -- so the guarantee has to hold
+        # for that state shape and mode too.
         (
-            True,
+            "align",
             MambaStateShapeCalculator.kda_state_shape(
                 tp_world_size=1, num_heads=4, head_dim=32, num_spec=NUM_SPEC
             ),
             (torch.bfloat16, torch.bfloat16),
         ),
     ],
-    ids=["gdn_no_prefix_caching", "kimi_kda_prefix_caching"],
+    ids=["gdn_none", "kimi_kda_align"],
 )
 def test_zero_draft_batch_still_applies_the_accepted_token_offset(
-    enable_prefix_caching, shapes, dtypes
+    mamba_cache_mode, shapes, dtypes
 ):
     """The numeric difference the fix makes, on the batch shape that triggers it.
 
@@ -182,7 +182,7 @@ def test_zero_draft_batch_still_applies_the_accepted_token_offset(
     meta = _decode_metadata(
         _builder(
             use_spec_decode=True,
-            enable_prefix_caching=enable_prefix_caching,
+            mamba_cache_mode=mamba_cache_mode,
             shapes=shapes,
             dtypes=dtypes,
         ),

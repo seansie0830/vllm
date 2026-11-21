@@ -12,7 +12,7 @@ import numpy as np
 import regex as re
 import torch
 from PIL import Image
-from transformers import InklingConfig, InklingProcessor
+from transformers import InklingProcessor
 from transformers.feature_extraction_utils import BatchFeature
 
 from vllm.config.multimodal import (
@@ -32,6 +32,8 @@ from vllm.multimodal.processing import (
     PromptUpdate,
     PromptUpdateDetails,
 )
+
+from ..configs import InklingMMConfig
 
 # Block-start markers (<|content_image|>, <|content_audio_input|>), kept verbatim
 IMAGE_MARKER_ID = 200005
@@ -77,17 +79,17 @@ def _rescale_image(
     return image.resize(size, resample=Image.Resampling.LANCZOS)
 
 
-def inkling_vision_enabled(config: InklingConfig) -> bool:
+def inkling_vision_enabled(config: InklingMMConfig) -> bool:
     return getattr(config.vision_config, "decoder_dmodel", None) is not None
 
 
-def inkling_audio_enabled(config: InklingConfig) -> bool:
+def inkling_audio_enabled(config: InklingMMConfig) -> bool:
     return getattr(config.audio_config, "decoder_dmodel", None) is not None
 
 
 class InklingProcessingInfo(BaseProcessingInfo):
-    def get_hf_config(self) -> InklingConfig:
-        return self.ctx.get_hf_config(InklingConfig)
+    def get_hf_config(self) -> InklingMMConfig:
+        return self.ctx.get_hf_config(InklingMMConfig)
 
     def get_hf_processor(self, **kwargs: object) -> InklingProcessor:
         return self.ctx.get_hf_processor(InklingProcessor, **kwargs)

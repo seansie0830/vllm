@@ -28,7 +28,7 @@ def _make_vllm_config(
         use_replayssm_trackers=False,
         cache_config=SimpleNamespace(
             block_size=block_size,
-            enable_prefix_caching=False,
+            mamba_cache_mode="none",
             use_replayssm=False,
             replayssm_buffer_len=16,
         ),

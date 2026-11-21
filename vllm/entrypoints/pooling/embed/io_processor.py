@@ -117,8 +117,7 @@ class EmbedIOProcessor(PoolingIOProcessor):
         if ctx.final_res_batch is None:
             raise ValueError("Final response batch not available")
 
-        # /pooling shares this processor but never chunks its inputs.
-        if ctx.chunked_embedding_metadata is None:
+        if not self.enable_chunked_processing:
             self._enforce_cohere_max_tokens(ctx)
             return super().post_process_online(ctx)
 

@@ -78,11 +78,11 @@ class GateLinear(ReplicatedLinear):
     ):
         is_hopper = current_platform.is_device_capability((9, 0))
         is_blackwell = current_platform.is_device_capability_family(100)
-        cdna_version = 0
+        is_gfx950 = False
         if current_platform.is_rocm():
-            from vllm.platforms.rocm import get_cdna_version
+            from vllm.platforms.rocm import on_gfx950
 
-            cdna_version = get_cdna_version()
+            is_gfx950 = on_gfx950()
         batch_invariant = envs.VLLM_BATCH_INVARIANT
         can_use_specialized_kernels = (
             current_platform.is_cuda()
@@ -107,8 +107,8 @@ class GateLinear(ReplicatedLinear):
             return_bias=return_bias,
         )
         self.out_dtype = out_dtype
+        self.is_gfx950 = is_gfx950
         self.is_hopper = is_hopper
-        self.cdna_version = cdna_version
 
         # A quantized gate exposes no plain ``weight``, so every specialized
         # tier below is disabled and forward falls back to ReplicatedLinear.
@@ -129,8 +129,7 @@ class GateLinear(ReplicatedLinear):
                     and (is_hopper or is_blackwell)
                     and (input_size, output_size) in self.FP32_SUPPORTED_SHAPES
                 )
-                # FP32 weights: gfx950 only. The gfx1250 path needs BF16 weights.
-                or cdna_version == 4
+                or is_gfx950
             )
         )
         self.allow_bf16x3_router_gemm = (
@@ -377,7 +376,7 @@ class GateLinear(ReplicatedLinear):
 
         # Tier 6: cuBLAS bf16→fp32
         if self.allow_cublas_router_gemm and x.dtype == torch.bfloat16:
-            if self.cdna_version >= 4:
+            if self.is_gfx950:
                 output = torch.ops.vllm.fp32_router_gemm_dispatch(x, self.weight, False)
             else:
                 output = torch.mm(x, self.weight.T, out_dtype=torch.float32)
@@ -559,10 +558,8 @@ def fp32_router_gemm_dispatch_impl(
             can_use_rocm_fp32_router_gemm,
             rocm_fp32_router_gemm,
         )
-        from vllm.platforms.rocm import get_cdna_version
 
-        # gfx1250's path (aiter tgemm) has no token limit.
-        if x.shape[0] <= _FP32_ROUTER_GEMM_MAX_TOKENS or get_cdna_version() >= 5:
+        if x.shape[0] <= _FP32_ROUTER_GEMM_MAX_TOKENS:
             x = x.contiguous()
             if can_use_rocm_fp32_router_gemm(x, weight):
                 return rocm_fp32_router_gemm(x, weight)

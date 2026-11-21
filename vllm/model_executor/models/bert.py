@@ -43,7 +43,6 @@ from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.vocab_parallel_embedding import VocabParallelEmbedding
 from vllm.sequence import IntermediateTensors
 from vllm.tasks import PoolingTask
-from vllm.v1.attention.backend import AttentionBackend
 from vllm.v1.pool.metadata import PoolingMetadata
 
 from .interfaces import SupportsCrossEncoding, SupportsLoRA, SupportsQuant
@@ -129,12 +128,7 @@ class BertPooler(SequencePooler):
 
 
 class BertEncoder(nn.Module):
-    def __init__(
-        self,
-        vllm_config: VllmConfig,
-        prefix: str = "",
-        attn_backend: type[AttentionBackend] | None = None,
-    ):
+    def __init__(self, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
         config = vllm_config.model_config.hf_config
         cache_config = vllm_config.cache_config
@@ -146,7 +140,6 @@ class BertEncoder(nn.Module):
                     cache_config=cache_config,
                     quant_config=quant_config,
                     prefix=f"{prefix}.layer.{layer_idx}",
-                    attn_backend=attn_backend,
                 )
                 for layer_idx in range(config.num_hidden_layers)
             ]
@@ -168,7 +161,6 @@ class BertLayer(nn.Module):
         cache_config: CacheConfig | None = None,
         quant_config: QuantizationConfig | None = None,
         prefix: str = "",
-        attn_backend: type[AttentionBackend] | None = None,
     ):
         super().__init__()
 
@@ -179,7 +171,6 @@ class BertLayer(nn.Module):
             cache_config=cache_config,
             quant_config=quant_config,
             prefix=f"{prefix}.attention",
-            attn_backend=attn_backend,
         )
 
         self.intermediate = BertIntermediate(
@@ -214,7 +205,6 @@ class BertAttention(nn.Module):
         cache_config: CacheConfig | None = None,
         quant_config: QuantizationConfig | None = None,
         prefix: str = "",
-        attn_backend: type[AttentionBackend] | None = None,
     ):
         super().__init__()
 
@@ -224,7 +214,6 @@ class BertAttention(nn.Module):
             cache_config=cache_config,
             quant_config=quant_config,
             prefix=f"{prefix}.output",
-            attn_backend=attn_backend,
         )
 
         self.output = BertSelfOutput(
@@ -250,7 +239,6 @@ class BertSelfAttention(nn.Module):
         cache_config: CacheConfig | None = None,
         quant_config: QuantizationConfig | None = None,
         prefix: str = "",
-        attn_backend: type[AttentionBackend] | None = None,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -287,7 +275,6 @@ class BertSelfAttention(nn.Module):
             cache_config=cache_config,
             quant_config=quant_config,
             prefix=f"{prefix}.attn",
-            attn_backend=attn_backend,
         )
 
     def forward(
@@ -413,7 +400,6 @@ class BertModel(nn.Module, SupportsQuant):
         vllm_config: VllmConfig,
         prefix: str = "",
         embedding_class: type[nn.Module] = BertEmbedding,
-        attn_backend: type[AttentionBackend] | None = None,
     ) -> None:
         super().__init__()
 
@@ -425,11 +411,7 @@ class BertModel(nn.Module, SupportsQuant):
 
         self.config = vllm_config.model_config.hf_config
         self.embeddings = embedding_class(self.config)
-        self.encoder = BertEncoder(
-            vllm_config=vllm_config,
-            prefix=f"{prefix}.encoder",
-            attn_backend=attn_backend,
-        )
+        self.encoder = BertEncoder(vllm_config=vllm_config, prefix=f"{prefix}.encoder")
 
     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.embeddings.word_embeddings(input_ids)
@@ -466,13 +448,11 @@ class BertPoolingModel(BertModel):
         vllm_config: VllmConfig,
         prefix: str = "",
         embedding_class: type[nn.Module] = BertEmbedding,
-        attn_backend: type[AttentionBackend] | None = None,
     ) -> None:
         super().__init__(
             vllm_config=vllm_config,
             prefix=prefix,
             embedding_class=embedding_class,
-            attn_backend=attn_backend,
         )
 
         self.pooler = BertPooler(vllm_config.model_config)

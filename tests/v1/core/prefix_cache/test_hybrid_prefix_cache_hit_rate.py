@@ -108,11 +108,14 @@ def server(request):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "server",
-    [pytest.param(False, id="base"), pytest.param(True, id="mtp")],
+    "server, dropped_blocks",
+    # MTP's prefill lookahead pollutes the tail block, so EAGLE drops one.
+    [pytest.param(False, 0, id="base"), pytest.param(True, 1, id="mtp")],
     indirect=["server"],
 )
-async def test_prefix_cache_hit_rate(server: RemoteOpenAIServer) -> None:
+async def test_prefix_cache_hit_rate(
+    server: RemoteOpenAIServer, dropped_blocks: int
+) -> None:
     # Isolate sessions so another conversation cannot hide a cache miss.
     salts = [uuid4().hex for _ in range(NUM_CONVERSATIONS)]
     histories: list[list[ChatCompletionMessageParam]] = [
@@ -161,7 +164,9 @@ async def test_prefix_cache_hit_rate(server: RemoteOpenAIServer) -> None:
                     assert cached == 0, context
                     computed = 0
                 # Every token below the last reachable boundary must be reused.
-                floor = max(0, round_down(computed, block_size))
+                floor = max(
+                    0, round_down(computed, block_size) - dropped_blocks * block_size
+                )
                 print(
                     f"{session=} {turn=} {replay=} {prompt=} {cached=} {floor=} "
                     f"hit_rate={cached / prompt:.4f}"

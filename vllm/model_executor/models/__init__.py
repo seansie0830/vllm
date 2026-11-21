@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from .config import register_model_config
 from .interfaces import (
     HasInnerState,
     SupportsHCSP,
@@ -30,7 +29,6 @@ from .registry import ModelRegistry
 
 __all__ = [
     "ModelRegistry",
-    "register_model_config",
     "VllmModelForPooling",
     "is_pooling_model",
     "VllmModelForTextGeneration",

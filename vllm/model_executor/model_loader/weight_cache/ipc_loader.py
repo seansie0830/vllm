@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Map post-processed weights from a local daemon's pluggable sharing backend."""
+"""IPC model loader: maps post-quantized weights from a local weight cache
+daemon via CUDA IPC instead of loading from disk."""
 
 import contextlib
 import dataclasses
@@ -11,27 +12,23 @@ from collections.abc import Callable
 from copy import copy
 from typing import TypeVar
 
-import torch
 import torch.nn as nn
 
 from vllm.config import ModelConfig, VllmConfig
 from vllm.config.load import LoadConfig
-from vllm.distributed import get_pp_group
+from vllm.distributed import (
+    get_dp_group,
+    get_pp_group,
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+)
 from vllm.logger import init_logger
 from vllm.model_executor.model_loader.base_loader import BaseModelLoader
 from vllm.model_executor.model_loader.default_loader import DefaultModelLoader
 from vllm.model_executor.model_loader.utils import (
+    _load_device,
     build_model_from_processed_weights,
     get_draft_load_config,
-)
-from vllm.model_executor.model_loader.weight_cache.ipc_backends import IPC_BACKENDS
-from vllm.model_executor.model_loader.weight_cache.ipc_backends.base import (
-    rebuild_entries,
-    record_bytes,
-)
-from vllm.model_executor.model_loader.weight_cache.ipc_backends.serial_utils import (
-    recv_msg,
-    send_msg,
 )
 from vllm.model_executor.model_loader.weight_cache.protocol import (
     CacheConfigMismatchError,
@@ -41,16 +38,14 @@ from vllm.model_executor.model_loader.weight_cache.protocol import (
     check_weight_cache_loader_support,
     get_current_device_uuid,
     get_socket_path,
+    recv_msg,
+    send_msg,
     verify_socket_owner,
 )
 from vllm.model_executor.model_loader.weight_cache.utils import (
-    build_weight_cache_key,
     is_draft_model_cacheable,
     record_external_weight_charge,
     record_external_weight_fallback,
-)
-from vllm.model_executor.model_loader.weight_cache.weight_seed.utils import (
-    rebuild_tensors,
 )
 from vllm.tracing import instrument
 
@@ -64,7 +59,7 @@ _T = TypeVar("_T")
 
 
 class IpcModelLoader(BaseModelLoader):
-    """Zero-copy loads a model using the weight cache daemon's sharing backend.
+    """Zero-copy loads a model by mapping daemon tensors via CUDA IPC.
 
     The model is initialized on the meta device and every parameter/buffer is
     replaced by the daemon's post-quantized tensor, so
@@ -81,7 +76,7 @@ class IpcModelLoader(BaseModelLoader):
     - connect_timeout_s: socket connect timeout (default: 5.0).
     - state_timeout_s: timeout for the weight-transfer request (default: 300.0).
 
-    The weights live in externally held backend allocations, so sleep mode
+    The weights live in the daemon's CUDA IPC allocations, so sleep mode
     (CuMemAllocator weight offloading) must not be used with this loader. If
     the daemon exits, the CUDA driver keeps the mapped weights alive until the
     engine exits, so the engine keeps serving; the loader watches the daemon
@@ -195,8 +190,8 @@ class IpcModelLoader(BaseModelLoader):
         model = self._build_model(vllm_config, model_config, prefix, state)
         self._watch_daemon()
         logger.info(
-            "Mapped %d tensors from the weight cache daemon via zero-copy sharing",
-            len(state.manifest["tensors"]),
+            "Mapped %d tensors from the weight cache daemon via zero-copy CUDA IPC",
+            len(state.entries),
         )
         return model
 
@@ -207,35 +202,43 @@ class IpcModelLoader(BaseModelLoader):
         prefix: str,
         state: WeightCacheState,
     ) -> nn.Module:
-        tensors = self._rebuild_storages(state)
+        _, device_index = _load_device(self.load_config, vllm_config)
+        tensors = {
+            name: entry.rebuild(device_index) for name, entry in state.entries.items()
+        }
+        kinds = {name: entry.kind for name, entry in state.entries.items()}
         return build_model_from_processed_weights(
             vllm_config,
             model_config,
             prefix,
             tensors,
-            state.manifest,
+            kinds,
             aliases=state.aliases,
             attrs=state.attrs,
             load_config=self.load_config,
         )
-
-    def _rebuild_storages(self, state: WeightCacheState) -> dict[str, torch.Tensor]:
-        """Rebuild manifest tensors from one imported buffer per storage."""
-        buffers = [
-            record_bytes(record, storage["nbytes"])
-            for record, storage in zip(
-                state.storages, state.manifest["storages"], strict=True
-            )
-        ]
-        return rebuild_tensors(state.manifest, buffers)
 
     def _fetch_state(
         self,
         vllm_config: VllmConfig,
         model_config: ModelConfig,
     ) -> WeightCacheState:
-        cache_key = build_weight_cache_key(
-            vllm_config, model_config, is_draft=self.is_draft
+        dp_group = get_dp_group()
+        pp_group = get_pp_group()
+        parallel_config = vllm_config.parallel_config
+        cache_key = WeightCacheKey.from_model_config(
+            model_config,
+            cache_config=vllm_config.cache_config,
+            tp_size=get_tensor_model_parallel_world_size(),
+            tp_rank=get_tensor_model_parallel_rank(),
+            pp_size=pp_group.world_size,
+            pp_rank=pp_group.rank_in_group,
+            dp_size=dp_group.world_size,
+            dp_rank=dp_group.rank_in_group,
+            is_draft=self.is_draft,
+            enable_expert_parallel=parallel_config.enable_expert_parallel,
+            expert_placement_strategy=parallel_config.expert_placement_strategy,
+            kernel_config=vllm_config.kernel_config,
         )
         return self._request_state(cache_key)
 
@@ -282,16 +285,8 @@ class IpcModelLoader(BaseModelLoader):
                 f"Weight cache daemon error: {response['message']}"
             )
         self._check_gpu_uuid(response["gpu_uuid"])
-        backend = response.get("backend")
-        if backend not in IPC_BACKENDS:
-            raise CacheConfigMismatchError(
-                f"weight_cache_backend mismatch: unsupported backend {backend!r}"
-            )
-        device_index = torch.accelerator.current_device_index()
-        records = rebuild_entries(response["storages"], device_index)
         return WeightCacheState(
-            manifest=response["manifest"],
-            storages=records,
+            entries=response["entries"],
             aliases=response["aliases"],
             attrs=response["attrs"],
         )

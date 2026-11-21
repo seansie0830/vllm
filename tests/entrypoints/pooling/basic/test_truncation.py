@@ -77,10 +77,12 @@ async def test_bigger_truncation_size(client: openai.AsyncOpenAI):
     assert err.value.status_code == 400
     error_details = err.value.response.json()["error"]
     assert error_details["type"] == "BadRequestError"
-    assert error_details["message"].startswith(
-        f"truncate_prompt_tokens={truncation_size} cannot be greater than "
-        f"max_model_len = {max_model_len}. Please request a smaller truncation size."
+    expected_message = (
+        "truncate_prompt_tokens value is "
+        "greater than max_model_len."
+        " Please request a smaller truncation size."
     )
+    assert error_details["message"] == expected_message
 
 
 @pytest.mark.asyncio

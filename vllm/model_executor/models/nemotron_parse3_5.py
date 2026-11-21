@@ -45,7 +45,7 @@ from vllm.model_executor.models.interfaces import (
     SupportsEagle3,
     SupportsMultiModal,
 )
-from vllm.model_executor.models.radio import RadioModel, radio_config_from_args
+from vllm.model_executor.models.radio import RadioModel
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.multimodal.inputs import (
     MultiModalFieldConfig,
@@ -60,6 +60,7 @@ from vllm.multimodal.processing import (
     PromptUpdate,
 )
 from vllm.renderers import TokenizeParams
+from vllm.transformers_utils.configs.radio import RadioConfig
 from vllm.utils.tensor_schema import TensorSchema, TensorShape
 from vllm.v1.attention.backend import AttentionType
 
@@ -566,14 +567,18 @@ class RadioWithNeck(nn.Module):
         quant_config: QuantizationConfig | None = None,
         prefix: str = "",
     ) -> RadioModel:
-        radio_config = radio_config_from_args(hf_config.encoder.args)
+        hf_config_vision = hf_config.encoder
+        model_name = hf_config_vision.args.get("model")
+        if model_name is None:
+            raise ValueError(f"Unsupported vit model type: {model_name}")
 
-        return RadioModel(
-            config=radio_config,
-            quant_config=quant_config,
-            image_size=tuple(hf_config.image_size),
-            prefix=prefix,
+        radio_config = RadioConfig(
+            model_name=model_name,
+            image_size=hf_config.image_size,
+            **hf_config_vision.args,
         )
+
+        return RadioModel(config=radio_config, quant_config=quant_config, prefix=prefix)
 
     def forward(
         self,
@@ -622,7 +627,9 @@ class RadioWithNeck(nn.Module):
         for height, width in image_sizes:
             patch_count = (height // patch_size) * (width // patch_size)
             summary = hidden[:, cursor : cursor + num_cls]
-            summary = summary[:, self.model_encoder.summary_idxs].flatten(1)
+            if self.model_encoder.summary_idxs is not None:
+                summary = summary[:, self.model_encoder.summary_idxs]
+            summary = summary.flatten(1)
             feature = hidden[:, cursor + num_skip : cursor + num_skip + patch_count]
             cursor += num_skip + patch_count
             feature = feature.to(self.conv1.weight.dtype)

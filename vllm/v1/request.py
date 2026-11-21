@@ -308,7 +308,7 @@ class Request:
             self.block_hashes.extend(self._block_hasher(self))
 
     def truncate_block_hashes(
-        self, hash_block_size: int, num_hash_lookahead_tokens: int
+        self, hash_block_size: int, num_hash_lookahead_tokens: int = 0
     ) -> None:
         """Discard hashes invalidated by truncating the request's tokens."""
         num_valid_hashes = (
